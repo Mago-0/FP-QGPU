@@ -7,7 +7,9 @@ authors = [
     { name = "Marco Gerhardt", email = "st172378@stud.uni-stuttgart.de" }
 ]
 requires-python = ">=3.13"
-dependencies = []
+dependencies = [
+    "numpy>=2.4.3",
+]
 
 [build-system]
 requires = ["uv_build>=0.10.11,<0.11.0"]

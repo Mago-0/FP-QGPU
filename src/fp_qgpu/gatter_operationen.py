@@ -1,7 +1,7 @@
 import numpy as np
 
 
-def u_gate(number_of_qubits, acting_on):
+def u_gate(number_of_qubits, acting_on, alpha, beta, gamma):
     num = number_of_qubits
     psi_vec = np.zeros(2**num, dtype=complex)
     psi_vec[0] = 1
@@ -9,6 +9,13 @@ def u_gate(number_of_qubits, acting_on):
 
     act_on = acting_on
     sigma_x = np.array([[0, 1], [1, 0]], dtype=complex)  # ersetzten mit u
+    # u_gate = np.array(
+    #     [np.cos(alpha), -np.exp(1j * beta) * np.sin(alpha / 2)],
+    #     [
+    #         np.exp(1j * gamma) * np.sin(alpha / 2),
+    #         np.exp(1j * (gamma + beta)) * np.cos(alpha / 2),
+    #     ],
+    # )
 
     old_indices = [i for i in range(num)]
     new_indices = old_indices.copy()

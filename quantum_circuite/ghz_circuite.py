@@ -5,7 +5,7 @@ from qiskit_aer import AerSimulator
 from qiskit.visualization import plot_histogram
 import matplotlib.pyplot as plt
 from fp_qgpu.simulator_mock import simulator_mock
-from fp_qgpu.gatter_operationen import extract_gates
+from fp_qgpu.gatter_operationen import get_circuit
 
 
 def ghz(n):
@@ -17,7 +17,7 @@ def ghz(n):
     qc.measure_all()
     print(qc)
     transpiled_qc = transpile(qc, basis_gates=["u", "cx"])
-    extract_gates(transpiled_qc)
+    print(get_circuit(transpiled_qc))
 
     # Transpile for simulator
     simulator = AerSimulator()

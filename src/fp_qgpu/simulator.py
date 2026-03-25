@@ -4,7 +4,7 @@ from fp_qgpu.gatter_operationen import u_gate, cx
 import numpy as np
 
 
-def simulator(transpiled_circuite: QuantumCircuit) -> None:
+def simulator_own(transpiled_circuite: QuantumCircuit) -> None:
     num = transpiled_circuite.num_qubits
     circuit = get_circuit(transpiled_circuite)
     psi_vec = np.zeros(2**num, dtype=complex)

@@ -3,3 +3,5 @@ __pycache__/
 .venv/
 uv.lock
 playground/
+_build/
+_autosummary/

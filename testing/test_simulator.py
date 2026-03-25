@@ -17,7 +17,7 @@ def create_test_circuit(n: int = 4) -> QuantumCircuit:
     return qc
 
 
-def test_simulator():
+def test_simulator() -> None:
     # Test with a simple circuit
     qc = create_test_circuit()
 
@@ -35,7 +35,7 @@ def test_simulator():
     assert result_mock[0] == result_Aer
 
 
-def test_random_circuit():
+def test_random_circuit() -> None:
     # Test with a random circuit
     n = 4
     depth = 10
@@ -55,7 +55,7 @@ def test_random_circuit():
     assert result_mock[0] == result_Aer
 
 
-def test_random_circuit_statevector():
+def test_random_circuit_statevector() -> None:
     # Test with a random circuit and compare statevectors
     n = 4
     depth = 10
@@ -78,7 +78,7 @@ def test_random_circuit_statevector():
     assert result_mock[1] == state_vector_Aer
 
 
-def test_own_simulator():
+def test_own_simulator() -> None:
 
     # --- Random Circuit ---
     n = 4

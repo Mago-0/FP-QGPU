@@ -5,7 +5,21 @@ from qiskit_aer import AerSimulator
 from qiskit.visualization import plot_histogram
 import matplotlib.pyplot as plt
 from fp_qgpu.simulator_mock import simulator_mock
-from fp_qgpu.gatter_operationen import get_circuit
+from fp_qgpu.simulator import simulator_own
+
+
+def ghz(n):
+    qc = QuantumCircuit(n)
+    qc.h(0)
+    for i in range(n):
+        if i < n - 1:
+            qc.cx(i, i + 1)
+    print(qc)
+    transpiled_qc = transpile(qc, basis_gates=["u", "cx"])
+    return transpiled_qc
+
+
+print(simulator_own(ghz(3)))
 
 
 def ghz(n):
@@ -17,7 +31,7 @@ def ghz(n):
     qc.measure_all()
     print(qc)
     transpiled_qc = transpile(qc, basis_gates=["u", "cx"])
-    print(get_circuit(transpiled_qc))
+    print(transpiled_qc.num_qubits)
 
     # Transpile for simulator
     simulator = AerSimulator()
@@ -97,6 +111,3 @@ def ghz_example(n=3):
     fig, ax = plt.subplots()
     plot_histogram(sim_result, ax=ax)
     plt.show()
-
-
-ghz(2)

@@ -1,41 +1,23 @@
 import numpy as np
 from qiskit import QuantumCircuit
-from fp_qgpu.circuits import simple01
+from fp_qgpu.circuits import simple00
 
 
-def u_gate(number_of_qubits, acting_on, theta, alpha, lam):
+def u_gate(number_of_qubits, acting_on, u, vec):
     num = number_of_qubits
-    psi_vec = np.zeros(2**num, dtype=complex)
-    psi_vec[0] = 1
-    psi = np.reshape(psi_vec, [2] * num)
-
     act_on = acting_on
-    # sigma_x = np.array([[0, 1], [1, 0]], dtype=complex)  # ersetzten mit u
-    u_gate = np.array(
-        [
-            [np.cos(theta / 2), -np.exp(1j * lam) * np.sin(theta / 2)],
-            [
-                np.exp(1j * alpha) * np.sin(theta / 2),
-                np.exp(1j * (alpha + lam)) * np.cos(theta / 2),
-            ],
-        ],
-        dtype=complex,
-    )
+    u_gate = u
 
     old_indices = [i for i in range(num)]
     new_indices = old_indices.copy()
     new_indices[act_on] = 51
 
-    phi = np.einsum(u_gate, [51, act_on], psi, old_indices, new_indices)
-    phi_vec = np.reshape(phi, 2**num)
-    print(phi_vec)
+    phi = np.einsum(u_gate, [51, act_on], vec, old_indices, new_indices)
+    return phi
 
 
-def cx(number_of_qubits, control, target):
+def cx(number_of_qubits, control, target, vec):
     num = number_of_qubits
-    psi_vec = np.zeros(2**num, dtype=complex)
-    psi_vec[2] = 1
-    psi = np.reshape(psi_vec, [2] * num)
 
     control = control
     target = target
@@ -53,10 +35,9 @@ def cx(number_of_qubits, control, target):
     new_indices[target] = target_idk
 
     phi = np.einsum(
-        cx, [control_idx, target_idk, control, target], psi, old_indices, new_indices
+        cx, [control_idx, target_idk, control, target], vec, old_indices, new_indices
     )
-    phi_vec = np.reshape(phi, 2**num)
-    print(phi_vec)
+    return phi
 
 
 def extract_gates(transpiled_qc):
@@ -72,10 +53,10 @@ def extract_gates(transpiled_qc):
 def get_circuit(qc: QuantumCircuit) -> None:
     circuit = []
     for gate in qc.data:
-        acting_on = [qc.find_bit(q) for q in gate.qubits]
+        acting_on = [qc.find_bit(q).index for q in gate.qubits]
         circuit.append([gate.name, acting_on, gate.matrix])
         # print('other paramters (such as angles):', gate[0].params)
     return circuit  # containes information about each gate
 
 
-print(get_circuit(simple01()))
+print(get_circuit(simple00()))

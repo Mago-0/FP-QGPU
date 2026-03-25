@@ -3,6 +3,8 @@ from qiskit_aer import AerSimulator
 from qiskit import transpile
 from fp_qgpu.simulator_mock import simulator_mock
 from qiskit.circuit.random import random_circuit
+from fp_qgpu.simulator import simulator_own
+import numpy as np
 
 
 def create_test_circuit(n=4):
@@ -74,3 +76,30 @@ def test_random_circuit_statevector():
     state_vector_Aer = result.get_statevector(circ)
 
     assert result_mock[1] == state_vector_Aer
+
+
+def test_own_simulator():
+
+    # --- Random Circuit ---
+    n = 4
+    depth = 10
+    qc = random_circuit(n, depth, measure=False)
+
+    qc_trans = transpile(qc, basis_gates=["u", "cx"])
+
+    # --- Dein Simulator ---
+    result_own = simulator_own(qc_trans)
+
+    # --- Aer Simulator ---
+    simulator = AerSimulator()
+    qc_st = qc.copy()
+    qc_st.save_statevector()
+    circ = transpile(qc_st, simulator)
+    result = simulator.run(circ, shots=1024).result()
+    state_vector_Aer = result.get_statevector(circ)
+
+    # --- globale Phase bestimmen ---
+    idx = int(np.argmax(np.abs(state_vector_Aer)))
+
+    phase = state_vector_Aer[idx] / result_own[idx]
+    assert np.allclose(state_vector_Aer, result_own * phase, atol=1e-12)

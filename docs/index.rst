@@ -17,4 +17,4 @@ documentation for details.
    :caption: Contents:
 
    installation.rst
-   reference.rst
+   references.rst

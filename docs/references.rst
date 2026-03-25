@@ -1,12 +1,12 @@
 API Reference
 =============
 
-.. currentmodule:: FP-QGPU 
+.. currentmodule:: fp_qgpu 
 
 .. autosummary:: 
     :toctree: _autosummary/
+    
       simulator_mock
-      simulator_own 
-      simple00
-      simple01 
-      ghz
+      simulator_own
+      u_gate 
+      cx

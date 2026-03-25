@@ -1,4 +1,4 @@
-# import fp_qgpu
+import fp_qgpu
 
 # Configuration file for the Sphinx documentation builder.
 #

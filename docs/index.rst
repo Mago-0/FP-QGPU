@@ -1,20 +1,17 @@
-.. FP-QGPU documentation master file, created by
-   sphinx-quickstart on Wed Mar 25 14:15:10 2026.
-   You can adapt this file completely to your liking, but it should at least
-   contain the root `toctree` directive.
-
 FP-QGPU documentation
 =====================
 
-Add your content using ``reStructuredText`` syntax. See the
-`reStructuredText <https://www.sphinx-doc.org/en/master/usage/restructuredtext/index.html>`_
-documentation for details.
+FP-QGPU is a student project for simulating quantum circuits with a custom
+NumPy-based simulator and comparing its output with Qiskit Aer.
 
+This documentation covers installation, common usage, and the available Python
+API in the ``fp_qgpu`` package.
 
 .. toctree::
    :maxdepth: 2
-   :hidden:
-   :caption: Contents:
+   :caption: Contents
 
-   installation.rst
-   references.rst
+   installation
+   usage
+   api_reference
+   references

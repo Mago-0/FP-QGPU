@@ -57,7 +57,7 @@ def main() -> None:
     output_dir = Path("testing") / ".benchmarks"
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    qubit_counts = [2, 4, 6, 8, 10, 20]
+    qubit_counts = list(range(1, 21, 2))
     repeats = 7
 
     own = BenchmarkSeries("simulator_own", [], [])

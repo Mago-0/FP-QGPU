@@ -7,6 +7,7 @@ Core Tools
 * `Qiskit Documentation <https://docs.quantum.ibm.com/>`_
 * `Qiskit Aer API <https://qiskit.github.io/qiskit-aer/>`_
 * `NumPy Documentation <https://numpy.org/doc/stable/>`_
+* `Numba Documentation <https://numba.readthedocs.io/>`_
 
 Concepts
 --------

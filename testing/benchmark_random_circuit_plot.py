@@ -64,7 +64,6 @@ def main() -> None:
     own_numba = BenchmarkSeries("simulator_own_numba", [], [])
     aer = BenchmarkSeries("qiskit_aer", [], [])
 
-    # Use a fixed Aer configuration requested by the user.
     aer_simulator = AerSimulator(
         method="statevector", fusion_enable=False, max_parallel_threads=1
     )

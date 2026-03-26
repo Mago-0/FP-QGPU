@@ -1,3 +1,5 @@
+"""Core NumPy-based statevector simulator."""
+
 from fp_qgpu.gatter_operationen import get_circuit
 from qiskit import QuantumCircuit
 from fp_qgpu.gatter_operationen import u_gate, cx
@@ -5,6 +7,10 @@ import numpy as np
 
 
 def simulator_own(transpiled_circuite: QuantumCircuit) -> np.ndarray:
+    """Simulate a transpiled circuit and return its final statevector.
+
+    The circuit is expected to use the ``u`` and ``cx`` basis gates.
+    """
     num = transpiled_circuite.num_qubits
     circuit = get_circuit(transpiled_circuite)
     psi_vec = np.zeros(2**num, dtype=complex)

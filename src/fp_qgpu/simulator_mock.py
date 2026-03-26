@@ -1,21 +1,18 @@
+"""Reference simulation wrapper around Qiskit Aer."""
+
 from qiskit import QuantumCircuit
 from qiskit_aer import AerSimulator
 from qiskit import transpile
 import numpy as np
 
 
-# einfacher Test-Circuit
-qc = QuantumCircuit(2)
-qc.h(0)
-qc.cx(0, 1)
-qc.measure_all()
-
-thisdict = {"qc": qc, "shots": 1024, "seed": 42}
-
-
 def simulator_mock(
     qc: QuantumCircuit, shots: int = 1024, seed: int | None = None
 ) -> tuple[dict[str, int] | None, np.ndarray]:
+    """Simulate a circuit and return measurement counts and statevector.
+
+    If the circuit has no classical bits, counts are returned as ``None``.
+    """
     simulator = AerSimulator(seed_simulator=seed)
 
     # Get statevector
@@ -34,7 +31,3 @@ def simulator_mock(
     else:
         counts = None
     return counts, state_vector
-
-
-result = simulator_mock(**thisdict)
-print(result)

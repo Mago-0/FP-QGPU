@@ -1,3 +1,5 @@
+"""Convenience circuit builders and demo routines."""
+
 from qiskit import QuantumCircuit
 from qiskit.circuit.library import QFTGate
 from qiskit import transpile
@@ -8,7 +10,7 @@ from fp_qgpu.simulator_mock import simulator_mock
 
 
 def simple00() -> QuantumCircuit:
-    # einfacher Test-Circuit
+    """Build a 2-qubit Bell-state preparation circuit."""
     qc = QuantumCircuit(2)
     qc.h(0)
     qc.cx(0, 1)
@@ -16,6 +18,7 @@ def simple00() -> QuantumCircuit:
 
 
 def simple01() -> QuantumCircuit:
+    """Build a small 2-qubit circuit with several single-qubit gates."""
     qc = QuantumCircuit(2)
     qc.h(0)
     qc.x(0)
@@ -26,6 +29,7 @@ def simple01() -> QuantumCircuit:
 
 
 def ghz_test(n: int) -> QuantumCircuit:
+    """Build and transpile an ``n``-qubit GHZ circuit without measurements."""
     qc = QuantumCircuit(n)
     qc.h(0)
     for i in range(n):
@@ -37,6 +41,7 @@ def ghz_test(n: int) -> QuantumCircuit:
 
 
 def ghz(n: int) -> QuantumCircuit:
+    """Run and plot an ``n``-qubit measured GHZ circuit with Aer."""
     qc = QuantumCircuit(n)
     qc.h(0)
     for i in range(n):
@@ -62,6 +67,7 @@ def ghz(n: int) -> QuantumCircuit:
 
 
 def qft() -> None:
+    """Run a 4-qubit QFT demo and display the measurement histogram."""
     n = 4
     qc = QuantumCircuit(n)
     qc.z(0)
@@ -87,6 +93,7 @@ def qft() -> None:
 
 
 def qft_superpos(n: int) -> None:
+    """Run QFT on an ``n``-qubit uniform superposition and plot counts."""
     qc = QuantumCircuit(n)
     for i in range(n):
         qc.h(i)
@@ -112,6 +119,7 @@ def qft_superpos(n: int) -> None:
 
 
 def ghz_example(n: int = 3) -> None:
+    """Run the GHZ example with the mock simulator and plot counts."""
     qc = QuantumCircuit(n)
     qc.h(0)
     for i in range(n):

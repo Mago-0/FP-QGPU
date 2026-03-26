@@ -5,7 +5,8 @@ Top-level package
 -----------------
 
 .. automodule:: fp_qgpu
-   :no-members:
+   :members:
+   :exclude-members: simulator_mock
 
 Circuit builders
 ----------------

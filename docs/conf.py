@@ -32,6 +32,15 @@ autodoc_default_options = {
     "members": True,
     "undoc-members": False,
 }
+autodoc_typehints = "description"
+autoclass_content = "both"
+
+napoleon_google_docstring = True
+napoleon_numpy_docstring = False
+napoleon_use_param = True
+napoleon_use_rtype = True
+napoleon_use_ivar = True
+napoleon_attr_annotations = True
 
 templates_path = ["_templates"]
 exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]

@@ -1,11 +1,13 @@
+"""Gate extraction and tensor operations for the custom simulator."""
+
 import numpy as np
 from qiskit import QuantumCircuit
-from fp_qgpu.circuits import simple00
 
 
 def u_gate(
     number_of_qubits: int, acting_on: int, u: np.ndarray, vec: np.ndarray
 ) -> np.ndarray:
+    """Apply a single-qubit ``u`` matrix to a state tensor."""
     num = number_of_qubits
     act_on = acting_on
     u_gate = u
@@ -19,6 +21,7 @@ def u_gate(
 
 
 def cx(number_of_qubits: int, control: int, target: int, vec: np.ndarray) -> np.ndarray:
+    """Apply a CNOT gate to a state tensor."""
     num = number_of_qubits
 
     control = control
@@ -43,22 +46,20 @@ def cx(number_of_qubits: int, control: int, target: int, vec: np.ndarray) -> np.
 
 
 def extract_gates(transpiled_qc: QuantumCircuit) -> list[str]:
+    """Return gate names in execution order from a transpiled circuit."""
     gate_list: list[str] = []
 
     for gate in transpiled_qc.data:
         gate_list.append(gate.name)
-        print(gate_list)
 
     return gate_list
 
 
 def get_circuit(qc: QuantumCircuit) -> list[list[object]]:
+    """Convert a Qiskit circuit into `[name, qubits, matrix]` records."""
     circuit: list[list[object]] = []
     for gate in qc.data:
         acting_on = [qc.find_bit(q).index for q in gate.qubits]
         circuit.append([gate.name, acting_on, gate.matrix])
         # print('other paramters (such as angles):', gate[0].params)
     return circuit  # containes information about each gate
-
-
-print(get_circuit(simple00()))

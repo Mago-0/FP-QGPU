@@ -27,6 +27,10 @@ FP-QGPU Documentation
           <h3>Tutorials</h3>
           <p>Explore circuit construction and statevector workflows.</p>
        </a>
+       <a class="doc-card" href="benchmarking.html">
+          <h3>Benchmarking</h3>
+          <p>Compare FP-QGPU and Qiskit Aer runtime over benchmark cases.</p>
+       </a>
        <a class="doc-card" href="architecture.html">
           <h3>Architecture</h3>
           <p>Understand the package layout and execution model.</p>
@@ -38,6 +42,10 @@ FP-QGPU Documentation
        <a class="doc-card" href="notebooks/simulator_comparison.html">
           <h3>Notebook Demo</h3>
           <p>Visualize circuits and verify simulator parity in Jupyter format.</p>
+       </a>
+       <a class="doc-card" href="notebooks/benchmark_cases.html">
+          <h3>Benchmark Notebook</h3>
+          <p>Generate runtime and ratio plots directly from benchmark cases.</p>
        </a>
        <a class="doc-card" href="diataxis.html">
           <h3>Diataxis Map</h3>
@@ -66,6 +74,7 @@ FP-QGPU provides:
 
    quickstart
    notebooks/simulator_comparison
+   Benchmark Notebook <notebooks/benchmark_cases>
 
 .. toctree::
    :maxdepth: 2
@@ -74,6 +83,7 @@ FP-QGPU provides:
 
    installation
    tutorials
+   benchmarking
 
 .. toctree::
    :maxdepth: 2

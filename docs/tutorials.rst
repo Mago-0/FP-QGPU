@@ -30,3 +30,5 @@ Notes
 -----
 
 These functions are visualization-focused and display histograms directly.
+
+For performance comparison between FP-QGPU and Qiskit Aer, see :doc:`benchmarking`.

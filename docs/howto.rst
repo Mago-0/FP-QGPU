@@ -9,3 +9,4 @@ How-to guides provide direct instructions for concrete tasks.
    howto_install
    howto_run_notebooks
    howto_generate_circuit_plots
+   howto_generate_benchmark_plot

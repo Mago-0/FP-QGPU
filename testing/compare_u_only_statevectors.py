@@ -3,7 +3,7 @@ from qiskit.circuit.random import random_circuit
 import numpy as np
 
 from fp_qgpu.gatter_operationen import get_circuit, u_gate
-from fp_qgpu.gatter_operationen_numba import u_gate_numba_compatible
+from fp_qgpu.gatter_operationen_numba import u_gate_numba
 
 
 def _simulate_u_only_with_original(transpiled_qc) -> np.ndarray:
@@ -43,7 +43,7 @@ def _simulate_u_only_with_numba_compatible(transpiled_qc) -> np.ndarray:
             raise ValueError(f"Expected only 'u' gates, found gate '{name}'.")
 
         axis_index = num_qubits - 1 - acting_on[0]
-        psi = u_gate_numba_compatible(num_qubits, axis_index, matrix, psi)
+        psi = u_gate_numba(num_qubits, axis_index, matrix, psi)
 
     return psi.reshape(2**num_qubits)
 

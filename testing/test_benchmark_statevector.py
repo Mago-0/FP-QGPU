@@ -1,18 +1,15 @@
 import time
 import numpy as np
 import pytest
-from fp_qgpu.gatter_operationen import cx, u_gate
 from fp_qgpu.gatter_operationen_numba import (
-    cx_numba_compatible,
-    cx_numba_compatible_three_loops,
-    u_gate_numba_compatible,
-    u_gate_numba_compatible_three_loops,
-    u_gate_numba_compatible_two_loops,
+    cx_gate_numba,
+    u_gate_numba,
 )
 from fp_qgpu.simulator import simulator_own
 from qiskit import transpile
 from qiskit.circuit.random import random_circuit
 from qiskit_aer import AerSimulator
+
 
 def _assert_equivalent_up_to_global_phase(
     reference: np.ndarray, candidate: np.ndarray, atol: float = 1e-12
@@ -59,35 +56,8 @@ def _run_variant_statevector(variant_name: str, qc_trans):
     if variant_name == "simulator_own":
         return simulator_own(qc_trans)
 
-    if variant_name == "u_base__cx_base":
-        return _simulate_with_impls(qc_trans, u_gate_numba_compatible, cx_numba_compatible)
-
-    if variant_name == "u_base__cx_three":
-        return _simulate_with_impls(
-            qc_trans, u_gate_numba_compatible, cx_numba_compatible_three_loops
-        )
-
-    if variant_name == "u_two__cx_base":
-        return _simulate_with_impls(
-            qc_trans, u_gate_numba_compatible_two_loops, cx_numba_compatible
-        )
-
-    if variant_name == "u_two__cx_three":
-        return _simulate_with_impls(
-            qc_trans, u_gate_numba_compatible_two_loops, cx_numba_compatible_three_loops
-        )
-
-    if variant_name == "u_three__cx_base":
-        return _simulate_with_impls(
-            qc_trans, u_gate_numba_compatible_three_loops, cx_numba_compatible
-        )
-
-    if variant_name == "u_three__cx_three":
-        return _simulate_with_impls(
-            qc_trans,
-            u_gate_numba_compatible_three_loops,
-            cx_numba_compatible_three_loops,
-        )
+    if variant_name == "u_numba__cx_numba":
+        return _simulate_with_impls(qc_trans, u_gate_numba, cx_gate_numba)
 
     raise ValueError(f"Unknown variant '{variant_name}'.")
 
@@ -97,15 +67,12 @@ def _run_variant_statevector(variant_name: str, qc_trans):
     "variant_name",
     [
         "simulator_own",
-        "u_base__cx_base",
-        "u_base__cx_three",
-        "u_two__cx_base",
-        "u_two__cx_three",
-        "u_three__cx_base",
-        "u_three__cx_three",
+        "u_numba__cx_numba",
     ],
 )
-def test_statevector_runtime_ratio_vs_aer(benchmark, num_qubits: int, variant_name: str):
+def test_statevector_runtime_ratio_vs_aer(
+    benchmark, num_qubits: int, variant_name: str
+):
     depth = max(8, num_qubits * 3)
     qc = random_circuit(num_qubits, depth, measure=False, seed=200 + num_qubits)
     qc_trans = transpile(qc, basis_gates=["u", "cx"], optimization_level=0)

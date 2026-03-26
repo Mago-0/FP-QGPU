@@ -37,7 +37,7 @@ def u_gate_numba(
     for lower in range(lower_size):
         idx_lower = lower
         for upper in range(upper_size):
-            idx_upper = upper << upper_shift
+            idx_upper = upper * (2**upper_shift)
 
             idx_0 = idx_lower + idx_upper + 0 * bit_q
             idx_1 = idx_lower + idx_upper + 1 * bit_q

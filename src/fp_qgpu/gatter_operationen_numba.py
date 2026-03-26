@@ -71,10 +71,8 @@ def cx_gate_numba(
     This variant avoids per-index bit extraction by traversing the state in
     structured blocks with exactly three nested loops.
     """
-    # Step 1: flatten input tensor state and allocate output.
+    # Step 1: flatten input tensor state.
     input_state = np.ascontiguousarray(vec.reshape(-1))
-    state_size = input_state.size
-    output_state = np.zeros(state_size, dtype=np.complex128)
 
     # Step 2: map tensor axes to bit positions in flattened indexing.
     control_bit_position = _axis_to_bit_position(number_of_qubits, control)
@@ -119,21 +117,19 @@ def cx_gate_numba(
                 i11 = i10 + lower_bit_weight
 
                 # Step 6: apply CX routing inside each 4-state block.
-                # If control is the higher bit:
-                #   i00, i01 stay; i10 <-> i11 swap.
-                # If control is the lower bit:
-                #   i00, i10 stay; i01 <-> i11 swap.
+                # Perform only the affected swap using explicit source/target
+                # indices to avoid an additional output buffer.
                 if control_is_higher_bit:
-                    output_state[i00] = input_state[i00]
-                    output_state[i01] = input_state[i01]
-                    output_state[i10] = input_state[i11]
-                    output_state[i11] = input_state[i10]
+                    source_index = i10
+                    target_index = i11
                 else:
-                    output_state[i00] = input_state[i00]
-                    output_state[i10] = input_state[i10]
-                    output_state[i01] = input_state[i11]
-                    output_state[i11] = input_state[i01]
+                    source_index = i01
+                    target_index = i11
+
+                tmp = input_state[source_index]
+                input_state[source_index] = input_state[target_index]
+                input_state[target_index] = tmp
 
     # Step 7: reshape to tensor form, matching existing API behavior.
     # Using vec.shape keeps the dimensionality explicit and Numba-friendly.
-    return output_state.reshape(vec.shape)
+    return input_state.reshape(vec.shape)

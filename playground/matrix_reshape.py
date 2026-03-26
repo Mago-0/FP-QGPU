@@ -15,3 +15,5 @@ print(f"\nTensorform sigma_x @ psi:\n{psi_x1}")
 
 psi_x1 = np.reshape(psi_x1, 2**n)
 print(f"\nVectorform sigma_x @ psi:\n{psi_x1}")
+
+print(list(range(1,22,2)))

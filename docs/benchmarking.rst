@@ -54,7 +54,7 @@ The benchmark writes:
 
 * ``testing/.benchmarks/statevector_runtime_vs_qubits.png``
 
-The documentation notebook writes a reusable docs asset:
+The docs use a reusable benchmark asset:
 
 * ``docs/_static/benchmark_runtime_vs_qubits.png``
 
@@ -62,13 +62,6 @@ The figure contains two subplots:
 
 * Runtime over qubits (custom simulator vs Aer)
 * Ratio over qubits (``own/aer``) with a reference line at ``1.0``
-
-Notebook in Documentation
--------------------------
-
-The benchmark plotting workflow is also available as a Jupyter notebook page:
-
-* :doc:`notebooks/benchmark_cases`
 
 The generated plot included in the docs:
 

@@ -19,6 +19,8 @@ __all__ = [
     "cx",
     "u_gate_numba",
     "cx_gate_numba",
+    "u_gate_numba",
+    "cx_gate_numba",
     "simulator_own",
     "simulator_mock",
 ]

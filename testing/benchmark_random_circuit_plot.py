@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import csv
+import json
 import time
+from datetime import datetime, timezone
 from dataclasses import dataclass
 from pathlib import Path
+import shutil
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -115,9 +119,117 @@ def _build_circuits(
     return qc_trans, qc_aer
 
 
+def _save_benchmark_data(
+    output_dir: Path,
+    qubit_counts: list[int],
+    own: BenchmarkSeries,
+    numba_compiled: BenchmarkSeries,
+    aer: BenchmarkSeries,
+) -> tuple[Path, Path]:
+    csv_path = output_dir / "random_circuit_benchmark_times.csv"
+    json_path = output_dir / "random_circuit_benchmark_times.json"
+
+    with csv_path.open("w", newline="", encoding="utf-8") as file:
+        writer = csv.writer(file)
+        writer.writerow([
+            "num_qubits",
+            "simulator_own_mean_s",
+            "simulator_own_std_s",
+            "numba_compiled_mean_s",
+            "numba_compiled_std_s",
+            "qiskit_aer_mean_s",
+            "qiskit_aer_std_s",
+            "ratio_own_over_aer",
+            "ratio_numba_compiled_over_aer",
+        ])
+        for i, num_qubits in enumerate(qubit_counts):
+            ratio_own = own.means[i] / aer.means[i]
+            ratio_numba = numba_compiled.means[i] / aer.means[i]
+            writer.writerow([
+                num_qubits,
+                own.means[i],
+                own.stds[i],
+                numba_compiled.means[i],
+                numba_compiled.stds[i],
+                aer.means[i],
+                aer.stds[i],
+                ratio_own,
+                ratio_numba,
+            ])
+
+    rows = []
+    for i, num_qubits in enumerate(qubit_counts):
+        rows.append({
+            "num_qubits": num_qubits,
+            "simulator_own_mean_s": own.means[i],
+            "simulator_own_std_s": own.stds[i],
+            "numba_compiled_mean_s": numba_compiled.means[i],
+            "numba_compiled_std_s": numba_compiled.stds[i],
+            "qiskit_aer_mean_s": aer.means[i],
+            "qiskit_aer_std_s": aer.stds[i],
+            "ratio_own_over_aer": own.means[i] / aer.means[i],
+            "ratio_numba_compiled_over_aer": numba_compiled.means[i] / aer.means[i],
+        })
+
+    payload = {
+        "generated_utc": datetime.now(timezone.utc).isoformat(),
+        "rows": rows,
+    }
+    with json_path.open("w", encoding="utf-8") as file:
+        json.dump(payload, file, indent=2)
+
+    return csv_path, json_path
+
+
+def _write_generated_docs(
+    docs_generated_dir: Path,
+    qubit_counts: list[int],
+    own: BenchmarkSeries,
+    numba_compiled: BenchmarkSeries,
+    aer: BenchmarkSeries,
+) -> Path:
+    docs_generated_dir.mkdir(parents=True, exist_ok=True)
+    generated_rst_path = docs_generated_dir / "benchmark_random_circuit_results.rst"
+
+    generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+
+    lines: list[str] = []
+    lines.append("Auto-generated benchmark report")
+    lines.append("-------------------------------")
+    lines.append("")
+    lines.append(f"Generated at: {generated_at}")
+    lines.append("")
+    lines.append(".. csv-table:: Runtime comparison across all methods")
+    lines.append(
+        '   :header: "Qubits", "simulator_own [s]", "numba_compiled [s]", "qiskit_aer [s]", "own/aer", "numba_compiled/aer"'
+    )
+    lines.append("")
+
+    for i, num_qubits in enumerate(qubit_counts):
+        ratio_own = own.means[i] / aer.means[i]
+        ratio_numba = numba_compiled.means[i] / aer.means[i]
+        lines.append(
+            f'   "{num_qubits}", "{own.means[i]:.6f}", "{numba_compiled.means[i]:.6f}", "{aer.means[i]:.6f}", "{ratio_own:.4f}", "{ratio_numba:.4f}"'
+        )
+
+    lines.append("")
+    lines.append("The generated benchmark plot:")
+    lines.append("")
+    lines.append(".. image:: /_static/random_circuit_benchmark.png")
+    lines.append("   :alt: Benchmark runtime and ratio over qubits")
+    lines.append("   :width: 90%")
+    lines.append("")
+
+    generated_rst_path.write_text("\n".join(lines), encoding="utf-8")
+    return generated_rst_path
+
+
 def main() -> None:
     output_dir = Path("testing") / ".benchmarks"
     output_dir.mkdir(parents=True, exist_ok=True)
+    docs_static_dir = Path("docs") / "_static"
+    docs_generated_dir = Path("docs") / "_generated"
+    docs_static_dir.mkdir(parents=True, exist_ok=True)
 
     qubit_counts = list(range(1, 21, 2))
     repeats = 7
@@ -226,7 +338,21 @@ def main() -> None:
 
     output_file = output_dir / "random_circuit_benchmark.png"
     fig.savefig(output_file, dpi=180)
+    docs_plot_file = docs_static_dir / "random_circuit_benchmark.png"
+    shutil.copy2(output_file, docs_plot_file)
+
+    csv_path, json_path = _save_benchmark_data(
+        output_dir, qubit_counts, own, numba_compiled, aer
+    )
+    generated_rst_path = _write_generated_docs(
+        docs_generated_dir, qubit_counts, own, numba_compiled, aer
+    )
+
     print(f"Saved plot to: {output_file}")
+    print(f"Saved docs plot to: {docs_plot_file}")
+    print(f"Saved benchmark CSV to: {csv_path}")
+    print(f"Saved benchmark JSON to: {json_path}")
+    print(f"Updated generated docs at: {generated_rst_path}")
 
 
 if __name__ == "__main__":

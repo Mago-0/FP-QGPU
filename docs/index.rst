@@ -8,7 +8,8 @@ FP-QGPU Documentation
        <h1>FP-QGPU</h1>
        <p class="hero-lead">
           Build, transpile, and simulate quantum circuits with a compact Python API.
-          This documentation follows a practical, guide-first structure inspired by scientific tooling docs.
+          This documentation provides installation instructions, quickstart guides, detailed tutorials, and API reference for FP-QGPU.
+          This toolkit was created in the Fortgeschrittenen Praktikum "Simulation von Quantenschaltungen auf GPUs" at the University of Stuttgart.
        </p>
     </section>
 

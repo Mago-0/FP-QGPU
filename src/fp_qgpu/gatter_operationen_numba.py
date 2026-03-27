@@ -14,6 +14,85 @@ def _axis_to_bit_position(number_of_qubits: int, axis_index: int) -> int:
 
 
 @numba.njit(cache=True)
+def _u_gate_flat_inplace(
+    number_of_qubits: int,
+    bit_position: int,
+    u: np.ndarray,
+    input_state: np.ndarray,
+    output_state: np.ndarray,
+) -> None:
+    two_pow_q = 2**bit_position
+    upper_count = 2 ** (number_of_qubits - bit_position - 1)
+    lower_count = 2**bit_position
+    upper_stride = 2 ** (bit_position + 1)
+
+    u00 = u[0, 0]
+    u01 = u[0, 1]
+    u10 = u[1, 0]
+    u11 = u[1, 1]
+
+    for upper in range(upper_count):
+        idx_upper = upper * upper_stride
+        for lower in range(lower_count):
+            idx0 = idx_upper + lower
+            idx1 = idx0 + two_pow_q
+
+            amp0 = input_state[idx0]
+            amp1 = input_state[idx1]
+
+            output_state[idx0] = u00 * amp0 + u01 * amp1
+            output_state[idx1] = u10 * amp0 + u11 * amp1
+
+
+@numba.njit(cache=True)
+def _cx_gate_flat_inplace(
+    number_of_qubits: int,
+    control_bit_position: int,
+    target_bit_position: int,
+    state: np.ndarray,
+) -> None:
+    if control_bit_position > target_bit_position:
+        higher_bit_position = control_bit_position
+        lower_bit_position = target_bit_position
+        control_is_higher_bit = True
+    else:
+        higher_bit_position = target_bit_position
+        lower_bit_position = control_bit_position
+        control_is_higher_bit = False
+
+    higher_bit_weight = 2**higher_bit_position
+    lower_bit_weight = 2**lower_bit_position
+
+    upper_count = 2 ** (number_of_qubits - higher_bit_position - 1)
+    middle_count = 2 ** (higher_bit_position - lower_bit_position - 1)
+    lower_count = 2**lower_bit_position
+
+    upper_stride = 2 ** (higher_bit_position + 1)
+    middle_stride = 2 ** (lower_bit_position + 1)
+
+    for upper in range(upper_count):
+        upper_base = upper * upper_stride
+        for middle in range(middle_count):
+            middle_base = upper_base + middle * middle_stride
+            for lower in range(lower_count):
+                i00 = middle_base + lower
+                i01 = i00 + lower_bit_weight
+                i10 = i00 + higher_bit_weight
+                i11 = i10 + lower_bit_weight
+
+                if control_is_higher_bit:
+                    source_index = i10
+                    target_index = i11
+                else:
+                    source_index = i01
+                    target_index = i11
+
+                tmp = state[source_index]
+                state[source_index] = state[target_index]
+                state[target_index] = tmp
+
+
+@numba.njit(cache=True)
 def u_gate_numba(
     number_of_qubits: int, acting_on: int, u: np.ndarray, vec: np.ndarray
 ) -> np.ndarray:
@@ -23,38 +102,11 @@ def u_gate_numba(
     This variant uses exactly two loops and explicit index composition to avoid
     per-element bit extraction in the inner update.
     """
-    # Step 1: flatten input tensor state and allocate output.
     input_state = np.ascontiguousarray(vec.reshape(-1))
-    state_size = input_state.size
-    output_state = np.zeros(state_size, dtype=np.complex128)
+    output_state = np.empty(input_state.size, dtype=np.complex128)
 
-    # Step 2: map the target tensor axis to the corresponding bit position q.
     q = _axis_to_bit_position(number_of_qubits, acting_on)
-    two_pow_q = 2**q
-
-    # Step 3: precompute loop ranges for the two-loop traversal.
-    # upper: bits above q
-    # lower: bits below q
-    upper_count = 2 ** (number_of_qubits - q - 1)
-    lower_count = 2**q
-    upper_stride = 2 ** (q + 1)
-
-    # Step 4: iterate over all (upper, lower) pairs and construct:
-    #   idx0 = idx_lower + idx_upper + 0 * 2**q
-    #   idx1 = idx_lower + idx_upper + 1 * 2**q
-    for upper in range(upper_count):
-        idx_upper = upper * upper_stride
-        for lower in range(lower_count):
-            idx_lower = lower
-
-            idx0 = idx_lower + idx_upper + 0 * two_pow_q
-            idx1 = idx_lower + idx_upper + 1 * two_pow_q
-
-            amp0 = input_state[idx0]
-            amp1 = input_state[idx1]
-
-            output_state[idx0] = u[0, 0] * amp0 + u[0, 1] * amp1
-            output_state[idx1] = u[1, 0] * amp0 + u[1, 1] * amp1
+    _u_gate_flat_inplace(number_of_qubits, q, u, input_state, output_state)
 
     # Step 5: reshape to tensor form, matching existing API behavior.
     # Using vec.shape keeps the dimensionality explicit and Numba-friendly.
@@ -71,65 +123,60 @@ def cx_gate_numba(
     This variant avoids per-index bit extraction by traversing the state in
     structured blocks with exactly three nested loops.
     """
-    # Step 1: flatten input tensor state.
     input_state = np.ascontiguousarray(vec.reshape(-1))
-
-    # Step 2: map tensor axes to bit positions in flattened indexing.
     control_bit_position = _axis_to_bit_position(number_of_qubits, control)
     target_bit_position = _axis_to_bit_position(number_of_qubits, target)
+    _cx_gate_flat_inplace(
+        number_of_qubits, control_bit_position, target_bit_position, input_state
+    )
 
-    # Step 3: identify the higher and lower bit positions.
-    # We iterate over blocks where these two bits are the only varying bits.
-    if control_bit_position > target_bit_position:
-        higher_bit_position = control_bit_position
-        lower_bit_position = target_bit_position
-        control_is_higher_bit = True
-    else:
-        higher_bit_position = target_bit_position
-        lower_bit_position = control_bit_position
-        control_is_higher_bit = False
-
-    higher_bit_weight = 2**higher_bit_position
-    lower_bit_weight = 2**lower_bit_position
-
-    # Step 4: precompute loop ranges for the three-loop traversal.
-    # upper: bits above the higher of control/target
-    # middle: bits between higher and lower
-    # lower: bits below the lower of control/target
-    upper_count = 2 ** (number_of_qubits - higher_bit_position - 1)
-    middle_count = 2 ** (higher_bit_position - lower_bit_position - 1)
-    lower_count = 2**lower_bit_position
-
-    upper_stride = 2 ** (higher_bit_position + 1)
-    middle_stride = 2 ** (lower_bit_position + 1)
-
-    # Step 5: walk through the state in three nested loops.
-    # For each (upper, middle, lower), we get one 4-state block:
-    # i00, i01, i10, i11 for (higher_bit, lower_bit) in {0,1} x {0,1}.
-    for upper in range(upper_count):
-        upper_base = upper * upper_stride
-        for middle in range(middle_count):
-            middle_base = upper_base + middle * middle_stride
-            for lower in range(lower_count):
-                i00 = middle_base + lower
-                i01 = i00 + lower_bit_weight
-                i10 = i00 + higher_bit_weight
-                i11 = i10 + lower_bit_weight
-
-                # Step 6: apply CX routing inside each 4-state block.
-                # Perform only the affected swap using explicit source/target
-                # indices to avoid an additional output buffer.
-                if control_is_higher_bit:
-                    source_index = i10
-                    target_index = i11
-                else:
-                    source_index = i01
-                    target_index = i11
-
-                tmp = input_state[source_index]
-                input_state[source_index] = input_state[target_index]
-                input_state[target_index] = tmp
-
-    # Step 7: reshape to tensor form, matching existing API behavior.
-    # Using vec.shape keeps the dimensionality explicit and Numba-friendly.
     return input_state.reshape(vec.shape)
+
+
+@numba.njit(cache=True)
+def simulate_circuit_numba_compiled(
+    number_of_qubits: int,
+    gate_kinds: np.ndarray,
+    u_axes: np.ndarray,
+    u_mats: np.ndarray,
+    cx_controls: np.ndarray,
+    cx_targets: np.ndarray,
+) -> np.ndarray:
+    state_size = 2**number_of_qubits
+    state_a = np.zeros(state_size, dtype=np.complex128)
+    state_a[0] = 1.0 + 0.0j
+    state_b = np.empty(state_size, dtype=np.complex128)
+
+    u_index = 0
+    cx_index = 0
+
+    for gate_kind in gate_kinds:
+        if gate_kind == 0:
+            axis = u_axes[u_index]
+            bit_position = _axis_to_bit_position(number_of_qubits, axis)
+            _u_gate_flat_inplace(
+                number_of_qubits,
+                bit_position,
+                u_mats[u_index],
+                state_a,
+                state_b,
+            )
+
+            tmp = state_a
+            state_a = state_b
+            state_b = tmp
+            u_index += 1
+        else:
+            control_axis = cx_controls[cx_index]
+            target_axis = cx_targets[cx_index]
+            control_bit_position = _axis_to_bit_position(number_of_qubits, control_axis)
+            target_bit_position = _axis_to_bit_position(number_of_qubits, target_axis)
+            _cx_gate_flat_inplace(
+                number_of_qubits,
+                control_bit_position,
+                target_bit_position,
+                state_a,
+            )
+            cx_index += 1
+
+    return state_a

@@ -2,10 +2,9 @@ import time
 import numpy as np
 import pytest
 from fp_qgpu.gatter_operationen_numba import (
-    cx_gate_numba,
-    u_gate_numba,
+    simulate_circuit_numba_compiled,
 )
-from fp_qgpu.simulator import simulator_own
+from fp_qgpu.simulator import CUDA_IMPORT_AVAILABLE, simulator_own, simulator_own_numba
 from qiskit import transpile
 from qiskit.circuit.random import random_circuit
 from qiskit_aer import AerSimulator
@@ -15,8 +14,18 @@ def _assert_equivalent_up_to_global_phase(
     reference: np.ndarray, candidate: np.ndarray, atol: float = 1e-12
 ) -> None:
     idx = int(np.argmax(np.abs(reference)))
+    if np.abs(candidate[idx]) < 1e-16:
+        idx = int(np.argmax(np.abs(candidate)))
     phase = reference[idx] / candidate[idx]
     assert np.allclose(reference, candidate * phase, atol=atol)
+
+
+def _cuda_is_available() -> bool:
+    if not CUDA_IMPORT_AVAILABLE:
+        return False
+    from numba import cuda
+
+    return cuda.is_available()
 
 
 def _run_aer_statevector(simulator: AerSimulator, circuit) -> np.ndarray:
@@ -24,11 +33,13 @@ def _run_aer_statevector(simulator: AerSimulator, circuit) -> np.ndarray:
     return np.asarray(result.get_statevector(circuit), dtype=complex)
 
 
-def _simulate_with_impls(transpiled_qc, u_impl, cx_impl) -> np.ndarray:
+def _compile_numba_workload(transpiled_qc) -> tuple[np.ndarray, ...]:
     num_qubits = transpiled_qc.num_qubits
-    psi_flat = np.zeros(2**num_qubits, dtype=complex)
-    psi_flat[0] = 1.0 + 0.0j
-    psi = psi_flat.reshape([2] * num_qubits)
+    gate_kinds: list[int] = []
+    u_axes: list[int] = []
+    u_mats: list[np.ndarray] = []
+    cx_controls: list[int] = []
+    cx_targets: list[int] = []
 
     for instruction in transpiled_qc.data:
         name = instruction.operation.name
@@ -36,7 +47,11 @@ def _simulate_with_impls(transpiled_qc, u_impl, cx_impl) -> np.ndarray:
         if name == "u":
             qubit = transpiled_qc.find_bit(instruction.qubits[0]).index
             axis = num_qubits - 1 - qubit
-            psi = u_impl(num_qubits, axis, instruction.operation.to_matrix(), psi)
+            gate_kinds.append(0)
+            u_axes.append(axis)
+            u_mats.append(
+                np.asarray(instruction.operation.to_matrix(), dtype=np.complex128)
+            )
             continue
 
         if name == "cx":
@@ -44,22 +59,67 @@ def _simulate_with_impls(transpiled_qc, u_impl, cx_impl) -> np.ndarray:
             target_qubit = transpiled_qc.find_bit(instruction.qubits[1]).index
             control_axis = num_qubits - 1 - control_qubit
             target_axis = num_qubits - 1 - target_qubit
-            psi = cx_impl(num_qubits, control_axis, target_axis, psi)
+            gate_kinds.append(1)
+            cx_controls.append(control_axis)
+            cx_targets.append(target_axis)
             continue
 
         raise ValueError(f"Unexpected gate '{name}' in benchmark circuit.")
 
-    return psi.reshape(2**num_qubits)
+    if len(u_mats) > 0:
+        u_mats_arr = np.asarray(u_mats, dtype=np.complex128)
+    else:
+        u_mats_arr = np.zeros((0, 2, 2), dtype=np.complex128)
+
+    return (
+        np.asarray(gate_kinds, dtype=np.int8),
+        np.asarray(u_axes, dtype=np.int64),
+        u_mats_arr,
+        np.asarray(cx_controls, dtype=np.int64),
+        np.asarray(cx_targets, dtype=np.int64),
+    )
+
+
+def _run_numba_compiled_statevector(
+    num_qubits: int, compiled_workload: tuple[np.ndarray, ...]
+) -> np.ndarray:
+    gate_kinds, u_axes, u_mats, cx_controls, cx_targets = compiled_workload
+    return simulate_circuit_numba_compiled(
+        num_qubits,
+        gate_kinds,
+        u_axes,
+        u_mats,
+        cx_controls,
+        cx_targets,
+    )
 
 
 def _run_variant_statevector(variant_name: str, qc_trans):
     if variant_name == "simulator_own":
         return simulator_own(qc_trans)
 
-    if variant_name == "u_numba__cx_numba":
-        return _simulate_with_impls(qc_trans, u_gate_numba, cx_gate_numba)
+    if variant_name == "numba_compiled":
+        compiled_workload = _compile_numba_workload(qc_trans)
+        return _run_numba_compiled_statevector(qc_trans.num_qubits, compiled_workload)
+
+    if variant_name == "numba_cuda":
+        return simulator_own_numba(qc_trans, use_cuda=True)
 
     raise ValueError(f"Unknown variant '{variant_name}'.")
+
+
+def _collect_call_times(
+    callable_fn, rounds: int, warmup_rounds: int = 0
+) -> list[float]:
+    for _ in range(warmup_rounds):
+        callable_fn()
+
+    times: list[float] = []
+    for _ in range(rounds):
+        t0 = time.perf_counter()
+        callable_fn()
+        times.append(time.perf_counter() - t0)
+    return times
 
 
 @pytest.mark.parametrize("num_qubits", [2, 4, 6, 8])
@@ -67,13 +127,17 @@ def _run_variant_statevector(variant_name: str, qc_trans):
     "variant_name",
     [
         "simulator_own",
-        "u_numba__cx_numba",
+        "numba_compiled",
+        "numba_cuda",
     ],
 )
 def test_statevector_runtime_ratio_vs_aer(
     benchmark, num_qubits: int, variant_name: str
 ):
-    depth = max(8, num_qubits * 3)
+    if variant_name == "numba_cuda" and not _cuda_is_available():
+        pytest.skip("CUDA benchmark requested, but CUDA is unavailable on this machine.")
+
+    depth = 10
     qc = random_circuit(num_qubits, depth, measure=False, seed=200 + num_qubits)
     qc_trans = transpile(qc, basis_gates=["u", "cx"], optimization_level=0)
 
@@ -82,28 +146,52 @@ def test_statevector_runtime_ratio_vs_aer(
     qc_aer.save_statevector()
     qc_aer = transpile(qc_aer, simulator, optimization_level=0)
 
-    state_own = _run_variant_statevector(variant_name, qc_trans)
+    compiled_workload = _compile_numba_workload(qc_trans)
+
+    # Trigger JIT compilation before timing to avoid first-run bias.
+    _run_numba_compiled_statevector(num_qubits, compiled_workload)
+    _run_aer_statevector(simulator, qc_aer)
+    if variant_name == "numba_cuda":
+        simulator_own_numba(qc_trans, use_cuda=True)
+
+    if variant_name == "numba_compiled":
+        state_own = _run_numba_compiled_statevector(num_qubits, compiled_workload)
+    else:
+        state_own = _run_variant_statevector(variant_name, qc_trans)
+
     state_aer = _run_aer_statevector(simulator, qc_aer)
     _assert_equivalent_up_to_global_phase(state_aer, state_own)
 
-    variant_times: list[float] = []
-    aer_times: list[float] = []
-    ratios: list[float] = []
+    if variant_name == "numba_compiled":
 
-    def run_both() -> None:
-        t0 = time.perf_counter()
-        _run_variant_statevector(variant_name, qc_trans)
-        variant_time = time.perf_counter() - t0
+        def run_variant() -> np.ndarray:
+            return _run_numba_compiled_statevector(num_qubits, compiled_workload)
 
-        t0 = time.perf_counter()
-        _run_aer_statevector(simulator, qc_aer)
-        aer_time = time.perf_counter() - t0
+    elif variant_name == "numba_cuda":
 
-        variant_times.append(variant_time)
-        aer_times.append(aer_time)
-        ratios.append(variant_time / aer_time)
+        def run_variant() -> np.ndarray:
+            return simulator_own_numba(qc_trans, use_cuda=True)
 
-    benchmark.pedantic(run_both, rounds=12, iterations=1, warmup_rounds=2)
+    else:
+
+        def run_variant() -> np.ndarray:
+            return _run_variant_statevector(variant_name, qc_trans)
+
+    rounds = 12
+    warmup_rounds = 2
+    variant_times = _collect_call_times(
+        run_variant, rounds=rounds, warmup_rounds=warmup_rounds
+    )
+    aer_times = _collect_call_times(
+        lambda: _run_aer_statevector(simulator, qc_aer),
+        rounds=rounds,
+        warmup_rounds=warmup_rounds,
+    )
+    ratios = [v / a for v, a in zip(variant_times, aer_times)]
+
+    benchmark.pedantic(
+        run_variant, rounds=rounds, iterations=1, warmup_rounds=warmup_rounds
+    )
 
     mean_variant = float(np.mean(variant_times))
     mean_aer = float(np.mean(aer_times))

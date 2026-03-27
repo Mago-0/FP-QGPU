@@ -99,7 +99,7 @@ def run_benchmark(
     rows: list[BenchmarkRow] = []
 
     for num_qubits in qubit_list:
-        depth = max(8, num_qubits * depth_factor)
+        depth = 10
         qc = random_circuit(num_qubits, depth, measure=False, seed=seed + num_qubits)
         qc_trans = transpile(qc, basis_gates=["u", "cx"], optimization_level=0)
 

@@ -3,19 +3,9 @@ Auto-generated benchmark report
 
 Generated at: 2026-03-27 09:39 UTC
 
-.. csv-table:: Runtime comparison across all methods
-   :header: "Qubits", "simulator_own [s]", "numba_compiled [s]", "qiskit_aer [s]", "own/aer", "numba_compiled/aer"
-
-   "1", "0.000074", "0.000005", "0.000903", "0.0814", "0.0059"
-   "3", "0.000371", "0.000005", "0.001106", "0.3352", "0.0046"
-   "5", "0.002060", "0.000029", "0.006840", "0.3012", "0.0042"
-   "7", "0.003184", "0.000076", "0.006202", "0.5133", "0.0123"
-   "9", "0.013422", "0.000615", "0.017191", "0.7807", "0.0358"
-   "11", "0.067097", "0.005417", "0.039764", "1.6874", "0.1362"
-   "13", "0.271510", "0.026633", "0.073465", "3.6958", "0.3625"
-   "15", "1.230141", "0.137574", "0.236193", "5.2082", "0.5825"
-   "17", "9.265735", "0.831616", "1.079563", "8.5829", "0.7703"
-   "19", "33.128585", "3.978095", "4.589678", "7.2181", "0.8667"
+.. csv-table:: Runtime comparison across available methods
+   :file: ../../testing/testing/.benchmarks/random_circuit_benchmark_times.csv
+   :header-rows: 1
 
 The generated benchmark plot:
 

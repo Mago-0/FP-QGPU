@@ -1,8 +1,9 @@
 # CUDA Gate Implementation (Step by Step)
 
-This document explains how the CUDA versions of the `u` and `cx` gates are implemented in `src/fp_qgpu/gatter_operationen_cuda.py`.
+This document explains how the CUDA path is implemented in
+`src/fp_qgpu/gatter_operationen_cuda.py`.
 
-## 1) Imports and CUDA kernel setup
+## 1) Imports and setup
 
 ```python
 import math
@@ -13,72 +14,72 @@ from numba import cuda
 
 - `numba.cuda` provides the CUDA JIT compiler and GPU API.
 - `numpy` is used for host-side array preparation.
-- `math.ceil` is used to compute the number of CUDA blocks.
+- `math` is used for launch-size calculations.
 
 ---
 
-## 2) U gate kernel: `app_u_kernel()`
+## 2) Launch helper: `_launch_config()`
+
+```python
+def _launch_config(total_work_items: int, threads_per_block: int) -> tuple[int, int]:
+    threads = max(1, min(threads_per_block, 1024))
+    required_blocks = max(1, math.ceil(total_work_items / threads))
+    min_occupancy_blocks = max(1, 2 * cuda.get_current_device().MULTIPROCESSOR_COUNT)
+    blocks = max(required_blocks, min_occupancy_blocks)
+    return blocks, threads
+```
+
+- Bounds threads per block to CUDA limits.
+- Computes enough blocks for the workload.
+- Enforces a minimum block count based on SM count for better occupancy.
+
+---
+
+## 3) U gate kernel: `app_u_kernel()`
 
 ```python
 @cuda.jit
 def app_u_kernel(
-    number_of_qubits: int,
     bit_position: int,
-    u: np.ndarray,
     input_state: np.ndarray,
     output_state: np.ndarray,
+    u00: complex,
+    u01: complex,
+    u10: complex,
+    u11: complex,
 ) -> None:
     pair_index = cuda.grid(1)
+    stride = cuda.gridsize(1)
     total_pairs = input_state.size // 2
 
-    if pair_index >= total_pairs:
-        return
+    while pair_index < total_pairs:
+        lower_mask = (1 << bit_position) - 1
+        upper = pair_index >> bit_position
+        lower = pair_index & lower_mask
+
+        idx0 = (upper << (bit_position + 1)) | lower
+        idx1 = idx0 | (1 << bit_position)
+
+        amp0 = input_state[idx0]
+        amp1 = input_state[idx1]
+
+        output_state[idx0] = u00 * amp0 + u01 * amp1
+        output_state[idx1] = u10 * amp0 + u11 * amp1
+        pair_index += stride
 ```
 
-### What happens here
+What this does:
 
-- `@cuda.jit` compiles this function as a GPU kernel.
-- `pair_index = cuda.grid(1)` gives each thread a unique linear index.
-- For a single-qubit gate, amplitudes are updated in pairs (`|...0...>` and `|...1...>`), so there are `N/2` pairs for `N` amplitudes.
-- Threads outside valid range return immediately.
-
-### Index reconstruction (core idea)
-
-```python
-    lower_mask = (1 << bit_position) - 1
-    upper = pair_index >> bit_position
-    lower = pair_index & lower_mask
-
-    idx0 = (upper << (bit_position + 1)) | lower
-    idx1 = idx0 | (1 << bit_position)
-```
-
-- `idx0` and `idx1` differ only in `bit_position`.
-- `idx0` corresponds to target bit `0`.
-- `idx1` corresponds to target bit `1`.
-- This avoids expensive per-thread loops over all qubits.
-
-### Apply the 2x2 U matrix
-
-```python
-    amp0 = input_state[idx0]
-    amp1 = input_state[idx1]
-
-    u00 = u[0, 0]
-    u01 = u[0, 1]
-    u10 = u[1, 0]
-    u11 = u[1, 1]
-
-    output_state[idx0] = u00 * amp0 + u01 * amp1
-    output_state[idx1] = u10 * amp0 + u11 * amp1
-```
-
-- Each thread reads one amplitude pair, applies the matrix multiply, and writes both results.
-- Output is written to a separate array (`output_state`) to avoid write conflicts.
+- Uses one thread per amplitude pair (`|...0...>`, `|...1...>`).
+- Reconstructs the paired indices with bit operations.
+- Uses a grid-stride loop (`pair_index += stride`) so launches can safely use
+  more blocks than strictly required.
+- Accepts matrix entries as scalar args (`u00..u11`) instead of passing a
+  matrix array to the kernel.
 
 ---
 
-## 3) CX gate kernel: `app_cx_kernel()`
+## 4) CX gate kernel: `app_cx_kernel()`
 
 ```python
 @cuda.jit
@@ -88,139 +89,126 @@ def app_cx_kernel(
     state: np.ndarray,
 ) -> None:
     i = cuda.grid(1)
+    stride = cuda.gridsize(1)
 
-    if i >= state.size or control_bit_position == target_bit_position:
+    if control_bit_position == target_bit_position:
         return
-```
 
-### Why in-place works for CX
-
-- A CX gate only swaps amplitudes between basis states when:
-  - control bit is `1`, and
-  - target bit flips (`0 <-> 1`).
-- We can do this in place if each swap pair is handled exactly once.
-
-### Bit-mask condition and one-direction swap
-
-```python
     control_mask = 1 << control_bit_position
     target_mask = 1 << target_bit_position
 
-    if (i & control_mask) != 0 and (i & target_mask) == 0:
-        j = i | target_mask
-        tmp = state[i]
-        state[i] = state[j]
-        state[j] = tmp
+    while i < state.size:
+        if (i & control_mask) != 0 and (i & target_mask) == 0:
+            j = i | target_mask
+            tmp = state[i]
+            state[i] = state[j]
+            state[j] = tmp
+        i += stride
 ```
 
-- `control_mask` checks whether control bit is `1`.
-- `target_mask` checks whether target bit is `0`.
-- Only indices with `target=0` perform swaps, so each pair is swapped once.
+Why this is correct:
+
+- The swap is applied only for indices where control is `1` and target is `0`.
+- That one-direction condition guarantees each pair is swapped exactly once.
+- The operation is in-place, so no second buffer is needed for CX.
 
 ---
 
-## 4) Host launcher for U: `u_gate_cuda()`
+## 5) Host launcher for U: `u_gate_cuda()`
 
 ```python
 def u_gate_cuda(
     number_of_qubits: int,
-    bit_position: int,
+    acting_on: int,
     u: np.ndarray,
     vec: np.ndarray,
     threads_per_block: int = 256,
 ) -> np.ndarray:
 ```
 
-### Steps
+Main steps:
 
 ```python
-    input_state = np.ascontiguousarray(vec.reshape(-1), dtype=np.complex128)
-    output_state = np.empty_like(input_state)
-    u_local = np.ascontiguousarray(u, dtype=np.complex128)
+bit_position = _axis_to_bit_position(number_of_qubits, acting_on)
+original_shape = vec.shape
+input_state = np.ascontiguousarray(vec.reshape(-1), dtype=np.complex128)
+u_local = np.ascontiguousarray(u, dtype=np.complex128)
+
+d_input = cuda.device_array(input_state.shape, dtype=np.complex128)
+d_output = cuda.device_array(input_state.shape, dtype=np.complex128)
+d_input.copy_to_device(input_state)
+
+blocks_per_grid, threads = _launch_config(input_state.size // 2, threads_per_block)
+app_u_kernel[blocks_per_grid, threads](
+    bit_position,
+    d_input,
+    d_output,
+    u_local[0, 0],
+    u_local[0, 1],
+    u_local[1, 0],
+    u_local[1, 1],
+)
+
+return d_output.copy_to_host().reshape(original_shape)
 ```
-
-- Flatten state to 1D for efficient GPU indexing.
-- Ensure contiguous memory and stable dtype (`complex128`).
-
-```python
-    d_input = cuda.to_device(input_state)
-    d_output = cuda.device_array_like(output_state)
-    d_u = cuda.to_device(u_local)
-```
-
-- Copy host arrays to device memory.
-
-```python
-    total_pairs = input_state.size // 2
-    blocks_per_grid = math.ceil(total_pairs / threads_per_block)
-```
-
-- Grid size is computed from required number of threads.
-
-```python
-    app_u_kernel[blocks_per_grid, threads_per_block](
-        number_of_qubits,
-        bit_position,
-        d_u,
-        d_input,
-        d_output,
-    )
-
-    return d_output.copy_to_host().reshape(vec.shape)
-```
-
-- Launch kernel.
-- Copy result back to CPU and restore original tensor shape.
 
 ---
 
-## 5) Host launcher for CX: `cx_gate_cuda()`
+## 6) Host launcher for CX: `cx_gate_cuda()`
 
 ```python
 def cx_gate_cuda(
     number_of_qubits: int,
-    control_bit_position: int,
-    target_bit_position: int,
+    control: int,
+    target: int,
     vec: np.ndarray,
     threads_per_block: int = 256,
 ) -> np.ndarray:
 ```
 
-### Steps
+Main steps:
 
 ```python
-    _ = number_of_qubits  # Kept for API compatibility with other backends.
-    state = np.ascontiguousarray(vec.reshape(-1), dtype=np.complex128)
-    d_state = cuda.to_device(state)
+control_bit_position = _axis_to_bit_position(number_of_qubits, control)
+target_bit_position = _axis_to_bit_position(number_of_qubits, target)
+original_shape = vec.shape
+state = np.ascontiguousarray(vec.reshape(-1), dtype=np.complex128)
+
+d_state = cuda.device_array(state.shape, dtype=np.complex128)
+d_state.copy_to_device(state)
+
+blocks_per_grid, threads = _launch_config(state.size, threads_per_block)
+app_cx_kernel[blocks_per_grid, threads](
+    control_bit_position,
+    target_bit_position,
+    d_state,
+)
+
+return d_state.copy_to_host().reshape(original_shape)
 ```
-
-- Flatten and copy state to GPU.
-- `number_of_qubits` is currently unused but kept for signature compatibility.
-
-```python
-    blocks_per_grid = math.ceil(state.size / threads_per_block)
-
-    app_cx_kernel[blocks_per_grid, threads_per_block](
-        control_bit_position,
-        target_bit_position,
-        d_state,
-    )
-
-    return d_state.copy_to_host().reshape(vec.shape)
-```
-
-- One thread per amplitude index.
-- Kernel applies conditional in-place swaps.
-- Result is copied back and reshaped.
 
 ---
 
-## 6) Integration in simulator
+## 7) Full-circuit CUDA path: `simulate_circuit_cuda()`
 
-In `src/fp_qgpu/simulator.py`, `simulator_own_numba(..., use_cuda=False)` can now switch between:
+`simulate_circuit_cuda()` keeps state on device through the full gate loop:
+
+- Initializes `d_state_a` and `d_state_b` on GPU.
+- For each `u` gate, writes from `d_state_a` to `d_state_b`, then swaps buffers.
+- For each `cx` gate, updates `d_state_a` in place.
+- Copies back to host once after all gates are complete.
+
+This reduces host-device transfer overhead compared to per-gate copies.
+
+---
+
+## 8) Integration in simulator
+
+In `src/fp_qgpu/simulator.py`, `simulator_own_numba(..., use_cuda=False)` can
+switch between:
 
 - CPU Numba path (`u_gate_numba`, `cx_gate_numba`)
-- CUDA path (`u_gate_cuda`, `cx_gate_cuda`) when `use_cuda=True`
+- CUDA full-circuit path (`simulate_circuit_cuda`) when `use_cuda=True`
 
-It also checks CUDA availability and raises clear errors if CUDA is requested but unavailable.
-
+The simulator also checks CUDA availability and raises clear errors if CUDA is
+requested but unavailable.

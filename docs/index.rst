@@ -36,6 +36,10 @@ FP-QGPU Documentation
           <h3>Architecture</h3>
           <p>Understand the package layout and execution model.</p>
        </a>
+       <a class="doc-card" href="cuda_gates_step_by_step.html">
+          <h3>CUDA Implementation</h3>
+          <p>See kernel design, launch strategy, and GPU execution flow.</p>
+       </a>
        <a class="doc-card" href="api/index.html">
           <h3>API Reference</h3>
           <p>Detailed reference for every public module and function.</p>
@@ -95,4 +99,5 @@ FP-QGPU provides:
    :caption: Explanation
 
    architecture
+   cuda_gates_step_by_step
    diataxis

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import json
+import os
 import time
 from datetime import datetime, timezone
 from dataclasses import dataclass
@@ -212,16 +213,15 @@ def _save_benchmark_data(
 
 def _write_generated_docs(
     docs_generated_dir: Path,
-    qubit_counts: list[int],
-    own: BenchmarkSeries,
-    numba_compiled: BenchmarkSeries,
-    aer: BenchmarkSeries,
-    numba_cuda: BenchmarkSeries | None,
+    csv_path: Path,
 ) -> Path:
     docs_generated_dir.mkdir(parents=True, exist_ok=True)
     generated_rst_path = docs_generated_dir / "benchmark_random_circuit_results.rst"
 
     generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    csv_rel = Path(
+        os.path.relpath(csv_path.resolve(), start=docs_generated_dir.resolve())
+    ).as_posix()
 
     lines: list[str] = []
     lines.append("Auto-generated benchmark report")
@@ -230,22 +230,8 @@ def _write_generated_docs(
     lines.append(f"Generated at: {generated_at}")
     lines.append("")
     lines.append(".. csv-table:: Runtime comparison across available methods")
-    lines.append(
-        '   :header: "Qubits", "simulator_own [s]", "numba_compiled [s]", "numba_cuda [s]", "qiskit_aer [s]", "own/aer", "numba_compiled/aer", "numba_cuda/aer"'
-    )
-    lines.append("")
-
-    for i, num_qubits in enumerate(qubit_counts):
-        ratio_own = own.means[i] / aer.means[i]
-        ratio_numba = numba_compiled.means[i] / aer.means[i]
-        cuda_mean = "n/a"
-        ratio_cuda = "n/a"
-        if numba_cuda is not None:
-            cuda_mean = f"{numba_cuda.means[i]:.6f}"
-            ratio_cuda = f"{(numba_cuda.means[i] / aer.means[i]):.4f}"
-        lines.append(
-            f'   "{num_qubits}", "{own.means[i]:.6f}", "{numba_compiled.means[i]:.6f}", "{cuda_mean}", "{aer.means[i]:.6f}", "{ratio_own:.4f}", "{ratio_numba:.4f}", "{ratio_cuda}"'
-        )
+    lines.append(f"   :file: {csv_rel}")
+    lines.append("   :header-rows: 1")
 
     lines.append("")
     lines.append("The generated benchmark plot:")
@@ -314,9 +300,7 @@ def main() -> None:
         aer.means.append(mean_aer)
         aer.stds.append(std_aer)
 
-        line = (
-            f"{n:2d}q | own={mean_own:.6f}s | numba_compiled={mean_numba_compiled:.6f}s | "
-        )
+        line = f"{n:2d}q | own={mean_own:.6f}s | numba_compiled={mean_numba_compiled:.6f}s | "
         if numba_cuda is not None:
             line += f"numba_cuda={mean_numba_cuda:.6f}s | "
         line += f"aer={mean_aer:.6f}s | rounds={repeats_for_n}"
@@ -413,9 +397,7 @@ def main() -> None:
     csv_path, json_path = _save_benchmark_data(
         output_dir, qubit_counts, own, numba_compiled, aer, numba_cuda
     )
-    generated_rst_path = _write_generated_docs(
-        docs_generated_dir, qubit_counts, own, numba_compiled, aer, numba_cuda
-    )
+    generated_rst_path = _write_generated_docs(docs_generated_dir, csv_path)
 
     print(f"Saved plot to: {output_file}")
     print(f"Saved docs plot to: {docs_plot_file}")

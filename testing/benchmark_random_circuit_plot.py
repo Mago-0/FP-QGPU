@@ -113,7 +113,7 @@ def _run_numba_compiled_statevector(
 def _build_circuits(
     num_qubits: int, seed: int
 ) -> tuple[QuantumCircuit, QuantumCircuit]:
-    depth = max(8, num_qubits * 3)
+    depth = 10
     qc = random_circuit(num_qubits, depth, measure=False, seed=seed)
     qc_trans = transpile(qc, basis_gates=["u", "cx"], optimization_level=0)
 

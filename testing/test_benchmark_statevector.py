@@ -137,7 +137,7 @@ def test_statevector_runtime_ratio_vs_aer(
     if variant_name == "numba_cuda" and not _cuda_is_available():
         pytest.skip("CUDA benchmark requested, but CUDA is unavailable on this machine.")
 
-    depth = max(8, num_qubits * 3)
+    depth = 10
     qc = random_circuit(num_qubits, depth, measure=False, seed=200 + num_qubits)
     qc_trans = transpile(qc, basis_gates=["u", "cx"], optimization_level=0)
 

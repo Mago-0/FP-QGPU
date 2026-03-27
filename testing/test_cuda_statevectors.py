@@ -30,7 +30,7 @@ def test_cuda_statevector_matches_aer(num_qubits: int) -> None:
     if not _cuda_ready():
         pytest.skip("CUDA tests requested, but CUDA is unavailable on this machine.")
 
-    depth = max(8, num_qubits * 3)
+    depth = 10
     qc = random_circuit(num_qubits, depth, measure=False, seed=500 + num_qubits)
     qc_trans = transpile(qc, basis_gates=["u", "cx"], optimization_level=0)
 

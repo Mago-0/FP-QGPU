@@ -11,7 +11,7 @@ from qiskit.circuit.random import random_circuit
 from qiskit_aer import AerSimulator
 
 from fp_qgpu.gatter_operationen_numba import cx_gate_numba, u_gate_numba
-from fp_qgpu.simulator import simulator_own
+from fp_qgpu.simulator import CUDA_IMPORT_AVAILABLE, simulator_own, simulator_own_numba
 
 
 @dataclass
@@ -20,6 +20,7 @@ class BenchmarkRow:
     aer_s: float
     own_s: float
     numba_s: float
+    cuda_s: float | None = None
 
     @property
     def own_ratio(self) -> float:
@@ -28,6 +29,20 @@ class BenchmarkRow:
     @property
     def numba_ratio(self) -> float:
         return self.numba_s / self.aer_s
+
+    @property
+    def cuda_ratio(self) -> float | None:
+        if self.cuda_s is None:
+            return None
+        return self.cuda_s / self.aer_s
+
+
+def _cuda_is_available() -> bool:
+    if not CUDA_IMPORT_AVAILABLE:
+        return False
+    from numba import cuda
+
+    return cuda.is_available()
 
 
 def _assert_equivalent_up_to_global_phase(
@@ -97,6 +112,7 @@ def run_benchmark(
     output_png: str | Path = "testing/benchmark_aer_vs_own.png",
 ) -> list[BenchmarkRow]:
     rows: list[BenchmarkRow] = []
+    cuda_available = _cuda_is_available()
 
     for num_qubits in qubit_list:
         depth = 10
@@ -111,13 +127,21 @@ def run_benchmark(
         state_aer = _run_aer_statevector(aer_sim, qc_aer)
         state_own = simulator_own(qc_trans)
         state_numba = _simulate_with_numba_gates(qc_trans)
+        state_cuda = simulator_own_numba(qc_trans, use_cuda=True) if cuda_available else None
 
         _assert_equivalent_up_to_global_phase(state_aer, state_own)
         _assert_equivalent_up_to_global_phase(state_aer, state_numba)
+        if state_cuda is not None:
+            _assert_equivalent_up_to_global_phase(state_aer, state_cuda)
 
         aer_time = _timed_mean(lambda: _run_aer_statevector(aer_sim, qc_aer), repeats)
         own_time = _timed_mean(lambda: simulator_own(qc_trans), repeats)
         numba_time = _timed_mean(lambda: _simulate_with_numba_gates(qc_trans), repeats)
+        cuda_time = (
+            _timed_mean(lambda: simulator_own_numba(qc_trans, use_cuda=True), repeats)
+            if cuda_available
+            else None
+        )
 
         rows.append(
             BenchmarkRow(
@@ -125,6 +149,7 @@ def run_benchmark(
                 aer_s=aer_time,
                 own_s=own_time,
                 numba_s=numba_time,
+                cuda_s=cuda_time,
             )
         )
 
@@ -140,9 +165,11 @@ def _plot_results(rows: list[BenchmarkRow], output_png: str | Path) -> None:
     aer_times = [row.aer_s for row in rows]
     own_times = [row.own_s for row in rows]
     numba_times = [row.numba_s for row in rows]
+    cuda_times = [row.cuda_s for row in rows]
 
     own_ratios = [row.own_ratio for row in rows]
     numba_ratios = [row.numba_ratio for row in rows]
+    cuda_ratios = [row.cuda_ratio for row in rows]
 
     fig, axes = plt.subplots(1, 2, figsize=(13, 5), constrained_layout=True)
 
@@ -154,6 +181,13 @@ def _plot_results(rows: list[BenchmarkRow], output_png: str | Path) -> None:
         marker="^",
         label="numba gates (u_gate_numba/cx_gate_numba)",
     )
+    if all(time_s is not None for time_s in cuda_times):
+        axes[0].plot(
+            qubits,
+            [float(time_s) for time_s in cuda_times],
+            marker="D",
+            label="numba cuda (simulator_own_numba)",
+        )
     axes[0].set_xlabel("Number of qubits")
     axes[0].set_ylabel("Mean runtime [s]")
     axes[0].set_title("Runtime vs qubits")
@@ -162,6 +196,13 @@ def _plot_results(rows: list[BenchmarkRow], output_png: str | Path) -> None:
 
     axes[1].plot(qubits, own_ratios, marker="s", label="simulator_own / Aer")
     axes[1].plot(qubits, numba_ratios, marker="^", label="numba gates / Aer")
+    if all(ratio is not None for ratio in cuda_ratios):
+        axes[1].plot(
+            qubits,
+            [float(ratio) for ratio in cuda_ratios],
+            marker="D",
+            label="numba cuda / Aer",
+        )
     axes[1].axhline(1.0, linestyle="--", linewidth=1.0, color="gray")
     axes[1].set_xlabel("Number of qubits")
     axes[1].set_ylabel("Runtime ratio")
@@ -169,16 +210,18 @@ def _plot_results(rows: list[BenchmarkRow], output_png: str | Path) -> None:
     axes[1].grid(True, alpha=0.3)
     axes[1].legend()
 
-    fig.suptitle("Benchmark: Aer vs simulator_own vs numba gates")
+    fig.suptitle("Benchmark: Aer vs simulator_own vs numba gates vs numba cuda")
     fig.savefig(output_path, dpi=200)
     plt.close(fig)
 
 
 def _print_table(rows: list[BenchmarkRow]) -> None:
-    print("qubits | aer_s | own_s | numba_s | own/aer | numba/aer")
+    print("qubits | aer_s | own_s | numba_s | cuda_s | own/aer | numba/aer | cuda/aer")
     for row in rows:
+        cuda_s = f"{row.cuda_s:>8.6f}" if row.cuda_s is not None else f"{'n/a':>8}"
+        cuda_ratio = f"{row.cuda_ratio:>8.3f}" if row.cuda_ratio is not None else f"{'n/a':>8}"
         print(
-            f"{row.qubits:>6} | {row.aer_s:>8.6f} | {row.own_s:>8.6f} | {row.numba_s:>8.6f} | {row.own_ratio:>7.3f} | {row.numba_ratio:>9.3f}"
+            f"{row.qubits:>6} | {row.aer_s:>8.6f} | {row.own_s:>8.6f} | {row.numba_s:>8.6f} | {cuda_s} | {row.own_ratio:>7.3f} | {row.numba_ratio:>9.3f} | {cuda_ratio}"
         )
 
 

@@ -135,8 +135,9 @@ def _save_benchmark_data(
     numba_compiled: BenchmarkSeries,
     aer: BenchmarkSeries,
     numba_cuda: BenchmarkSeries | None,
-) -> tuple[Path, Path]:
+) -> tuple[Path, Path, Path]:
     csv_path = output_dir / "random_circuit_benchmark_times.csv"
+    simtime_csv_path = output_dir / "random_circuit_benchmark_simtime.csv"
     json_path = output_dir / "random_circuit_benchmark_times.json"
 
     with csv_path.open("w", newline="", encoding="utf-8") as file:
@@ -180,6 +181,27 @@ def _save_benchmark_data(
                 ratio_cuda,
             ])
 
+    with simtime_csv_path.open("w", newline="", encoding="utf-8") as file:
+        writer = csv.writer(file)
+        writer.writerow([
+            "num_qubits",
+            "simulator_own_simtime_s",
+            "numba_compiled_simtime_s",
+            "numba_cuda_simtime_s",
+            "qiskit_aer_simtime_s",
+        ])
+        for i, num_qubits in enumerate(qubit_counts):
+            cuda_mean = ""
+            if numba_cuda is not None:
+                cuda_mean = f"{numba_cuda.means[i]:.3e}"
+            writer.writerow([
+                num_qubits,
+                f"{own.means[i]:.3e}",
+                f"{numba_compiled.means[i]:.3e}",
+                cuda_mean,
+                f"{aer.means[i]:.3e}",
+            ])
+
     rows = []
     for i, num_qubits in enumerate(qubit_counts):
         rows.append({
@@ -208,19 +230,19 @@ def _save_benchmark_data(
     with json_path.open("w", encoding="utf-8") as file:
         json.dump(payload, file, indent=2)
 
-    return csv_path, json_path
+    return csv_path, simtime_csv_path, json_path
 
 
 def _write_generated_docs(
     docs_generated_dir: Path,
-    csv_path: Path,
+    simtime_csv_path: Path,
 ) -> Path:
     docs_generated_dir.mkdir(parents=True, exist_ok=True)
     generated_rst_path = docs_generated_dir / "benchmark_random_circuit_results.rst"
 
     generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     csv_rel = Path(
-        os.path.relpath(csv_path.resolve(), start=docs_generated_dir.resolve())
+        os.path.relpath(simtime_csv_path.resolve(), start=docs_generated_dir.resolve())
     ).as_posix()
 
     lines: list[str] = []
@@ -394,14 +416,15 @@ def main() -> None:
     docs_plot_file = docs_static_dir / "random_circuit_benchmark.png"
     shutil.copy2(output_file, docs_plot_file)
 
-    csv_path, json_path = _save_benchmark_data(
+    csv_path, simtime_csv_path, json_path = _save_benchmark_data(
         output_dir, qubit_counts, own, numba_compiled, aer, numba_cuda
     )
-    generated_rst_path = _write_generated_docs(docs_generated_dir, csv_path)
+    generated_rst_path = _write_generated_docs(docs_generated_dir, simtime_csv_path)
 
     print(f"Saved plot to: {output_file}")
     print(f"Saved docs plot to: {docs_plot_file}")
     print(f"Saved benchmark CSV to: {csv_path}")
+    print(f"Saved benchmark simtime CSV to: {simtime_csv_path}")
     print(f"Saved benchmark JSON to: {json_path}")
     print(f"Updated generated docs at: {generated_rst_path}")
 

@@ -13,6 +13,7 @@ the benchmark is executed from inside the ``testing`` directory):
 
 * ``random_circuit_benchmark_times.json``
 * ``random_circuit_benchmark_times.csv``
+* ``random_circuit_benchmark_simtime.csv``
 * ``random_circuit_benchmark.png``
 * ``statevector_runtime_vs_qubits.png``
 
@@ -70,6 +71,7 @@ Running the benchmark script updates all of the following automatically:
 
 * ``testing/.benchmarks/random_circuit_benchmark.png``
 * ``testing/.benchmarks/random_circuit_benchmark_times.csv``
+* ``testing/.benchmarks/random_circuit_benchmark_simtime.csv``
 * ``testing/.benchmarks/random_circuit_benchmark_times.json``
 * ``testing/.benchmarks/statevector_runtime_vs_qubits.png``
 * ``docs/_static/random_circuit_benchmark.png``

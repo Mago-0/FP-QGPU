@@ -29,6 +29,20 @@ gatter_operationen
    :members:
    :undoc-members:
 
+gatter_operationen_numba
+------------------------
+
+.. automodule:: fp_qgpu.gatter_operationen_numba
+   :members:
+   :undoc-members:
+
+gatter_operationen_cuda
+-----------------------
+
+.. automodule:: fp_qgpu.gatter_operationen_cuda
+   :members:
+   :undoc-members:
+
 pauli_matricies
 ---------------
 

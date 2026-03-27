@@ -30,7 +30,7 @@ def app_u_kernel(
 ) -> None:
     """Apply a single-qubit U gate on the GPU.
 
-    One CUDA thread updates exactly one basis-state pair (|...0...>, |...1...>)
+    One CUDA thread updates exactly one basis-state pair ``(|...0...>, |...1...>)``
     that differs only in the target bit.
     """
     pair_index = cuda.grid(1)

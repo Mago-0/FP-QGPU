@@ -19,13 +19,13 @@ Clone the repository and create a new uv environment:
 
 .. code-block:: powershell
 
-	git clone git@github.com:<your-username>/<project-name>.git
+	git clone https://github.com/Mago-0/FP-QGPU.git
 
 Sync dependencies and create a virtual environment:
 
 .. code-block:: powershell
 
-	cd <project-name>
+	cd FP-QGPU
 	uv sync
 
 Verify Installation

@@ -10,7 +10,8 @@ from qiskit import QuantumCircuit, transpile
 from qiskit.circuit.random import random_circuit
 from qiskit_aer import AerSimulator
 
-from fp_qgpu.simulator import simulator_own, simulator_own_numba
+from fp_qgpu.gatter_operationen_numba import simulate_circuit_numba_compiled
+from fp_qgpu.simulator import simulator_own
 
 
 @dataclass
@@ -34,6 +35,67 @@ def _bench_callable(func, repeats: int) -> tuple[float, float]:
         func()
         times.append(time.perf_counter() - t0)
     return float(np.mean(times)), float(np.std(times))
+
+
+def _compile_numba_workload(transpiled_qc: QuantumCircuit) -> tuple[np.ndarray, ...]:
+    num_qubits = transpiled_qc.num_qubits
+    gate_kinds: list[int] = []
+    u_axes: list[int] = []
+    u_mats: list[np.ndarray] = []
+    cx_controls: list[int] = []
+    cx_targets: list[int] = []
+
+    for instruction in transpiled_qc.data:
+        name = instruction.operation.name
+
+        if name == "u":
+            qubit = transpiled_qc.find_bit(instruction.qubits[0]).index
+            axis = num_qubits - 1 - qubit
+            gate_kinds.append(0)
+            u_axes.append(axis)
+            u_mats.append(
+                np.asarray(instruction.operation.to_matrix(), dtype=np.complex128)
+            )
+            continue
+
+        if name == "cx":
+            control_qubit = transpiled_qc.find_bit(instruction.qubits[0]).index
+            target_qubit = transpiled_qc.find_bit(instruction.qubits[1]).index
+            control_axis = num_qubits - 1 - control_qubit
+            target_axis = num_qubits - 1 - target_qubit
+            gate_kinds.append(1)
+            cx_controls.append(control_axis)
+            cx_targets.append(target_axis)
+            continue
+
+        raise ValueError(f"Unexpected gate '{name}' in benchmark circuit.")
+
+    if len(u_mats) > 0:
+        u_mats_arr = np.asarray(u_mats, dtype=np.complex128)
+    else:
+        u_mats_arr = np.zeros((0, 2, 2), dtype=np.complex128)
+
+    return (
+        np.asarray(gate_kinds, dtype=np.int8),
+        np.asarray(u_axes, dtype=np.int64),
+        u_mats_arr,
+        np.asarray(cx_controls, dtype=np.int64),
+        np.asarray(cx_targets, dtype=np.int64),
+    )
+
+
+def _run_numba_compiled_statevector(
+    num_qubits: int, compiled_workload: tuple[np.ndarray, ...]
+) -> np.ndarray:
+    gate_kinds, u_axes, u_mats, cx_controls, cx_targets = compiled_workload
+    return simulate_circuit_numba_compiled(
+        num_qubits,
+        gate_kinds,
+        u_axes,
+        u_mats,
+        cx_controls,
+        cx_targets,
+    )
 
 
 def _build_circuits(
@@ -61,7 +123,7 @@ def main() -> None:
     repeats = 7
 
     own = BenchmarkSeries("simulator_own", [], [])
-    own_numba = BenchmarkSeries("simulator_own_numba", [], [])
+    numba_compiled = BenchmarkSeries("numba_compiled", [], [])
     aer = BenchmarkSeries("qiskit_aer", [], [])
 
     aer_simulator = AerSimulator(
@@ -70,18 +132,19 @@ def main() -> None:
 
     for n in qubit_counts:
         qc_trans, qc_aer = _build_circuits(num_qubits=n, seed=1234 + n)
+        compiled_workload = _compile_numba_workload(qc_trans)
         repeats_for_n = 3 if n >= 16 else repeats
 
         # Warmup pass to avoid including one-time setup/JIT costs in timings.
         simulator_own(qc_trans)
-        simulator_own_numba(qc_trans)
+        _run_numba_compiled_statevector(n, compiled_workload)
         _run_aer_statevector(aer_simulator, qc_aer)
 
         mean_own, std_own = _bench_callable(
             lambda: simulator_own(qc_trans), repeats_for_n
         )
-        mean_own_numba, std_own_numba = _bench_callable(
-            lambda: simulator_own_numba(qc_trans), repeats_for_n
+        mean_numba_compiled, std_numba_compiled = _bench_callable(
+            lambda: _run_numba_compiled_statevector(n, compiled_workload), repeats_for_n
         )
         mean_aer, std_aer = _bench_callable(
             lambda: _run_aer_statevector(aer_simulator, qc_aer), repeats_for_n
@@ -89,18 +152,18 @@ def main() -> None:
 
         own.means.append(mean_own)
         own.stds.append(std_own)
-        own_numba.means.append(mean_own_numba)
-        own_numba.stds.append(std_own_numba)
+        numba_compiled.means.append(mean_numba_compiled)
+        numba_compiled.stds.append(std_numba_compiled)
         aer.means.append(mean_aer)
         aer.stds.append(std_aer)
 
         print(
-            f"{n:2d}q | own={mean_own:.6f}s | own_numba={mean_own_numba:.6f}s | "
+            f"{n:2d}q | own={mean_own:.6f}s | numba_compiled={mean_numba_compiled:.6f}s | "
             f"aer={mean_aer:.6f}s | rounds={repeats_for_n}"
         )
 
     ratio_own = np.array(own.means) / np.array(aer.means)
-    ratio_own_numba = np.array(own_numba.means) / np.array(aer.means)
+    ratio_numba_compiled = np.array(numba_compiled.means) / np.array(aer.means)
 
     fig, (ax_runtime, ax_ratio) = plt.subplots(2, 1, figsize=(10, 9), sharex=True)
 
@@ -115,12 +178,12 @@ def main() -> None:
     )
     ax_runtime.errorbar(
         qubit_counts,
-        own_numba.means,
-        yerr=own_numba.stds,
+        numba_compiled.means,
+        yerr=numba_compiled.stds,
         marker="s",
         capsize=3,
         linewidth=2,
-        label=own_numba.name,
+        label=numba_compiled.name,
     )
     ax_runtime.errorbar(
         qubit_counts,
@@ -147,10 +210,10 @@ def main() -> None:
     )
     ax_ratio.plot(
         qubit_counts,
-        ratio_own_numba,
+        ratio_numba_compiled,
         marker="s",
         linewidth=2,
-        label="simulator_own_numba / qiskit_aer",
+        label="numba_compiled / qiskit_aer",
     )
     ax_ratio.axhline(1.0, color="black", linestyle=":", linewidth=1.5, label="parity")
     ax_ratio.set_xlabel("Number of Qubits")

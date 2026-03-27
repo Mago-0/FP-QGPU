@@ -41,9 +41,9 @@ Benchmark Cases
 ---------------
 
 The benchmark script is defined in ``testing/benchmark_random_circuit_plot.py``.
-The current stored dataset runs for odd qubit counts from 1 to 19:
+The current stored dataset runs for odd qubit counts from 1 to 21:
 
-* ``[1, 3, 5, 7, 9, 11, 13, 15, 17, 19]``
+* ``[1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21]``
 
 For each case:
 
